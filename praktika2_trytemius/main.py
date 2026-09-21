@@ -1,16 +1,9 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
 import os
 import tempfile
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
 
-from crypto import (
-    CaesarCipher,
-    TrithemiusCipher,
-    BruteForceAttack,
-    KnownPlaintextAttack,
-    UA_ALPHABET,
-    EN_ALPHABET,
-)
+from crypto import EN_ALPHABET, KnownPlaintextAttack, TrithemiusCipher, UA_ALPHABET
 from strings import t
 
 
@@ -21,15 +14,14 @@ class App(tk.Tk):
         self.geometry("820x560")
         self.path = None
         self.binary = None
-        self.caesar = CaesarCipher()
-        self.trit = TrithemiusCipher()
-        self._build_menu()
-        self._build_toolbar()
-        self._build_body()
+        self.cipher = TrithemiusCipher()
+        self._menu()
+        self._toolbar()
+        self._body()
 
-    def _build_menu(self):
-        menubar = tk.Menu(self)
-        file_m = tk.Menu(menubar, tearoff=0)
+    def _menu(self):
+        bar = tk.Menu(self)
+        file_m = tk.Menu(bar, tearoff=0)
         file_m.add_command(label=t("new"), command=self.new_file)
         file_m.add_command(label=t("open"), command=self.open_file)
         file_m.add_command(label=t("save"), command=self.save_file)
@@ -38,47 +30,41 @@ class App(tk.Tk):
         file_m.add_command(label=t("print"), command=self.print_file)
         file_m.add_separator()
         file_m.add_command(label=t("exit"), command=self.destroy)
-        menubar.add_cascade(label=t("file"), menu=file_m)
+        bar.add_cascade(label=t("file"), menu=file_m)
 
-        cipher_m = tk.Menu(menubar, tearoff=0)
+        cipher_m = tk.Menu(bar, tearoff=0)
         cipher_m.add_command(label=t("encrypt"), command=self.encrypt)
         cipher_m.add_command(label=t("decrypt"), command=self.decrypt)
         cipher_m.add_separator()
-        cipher_m.add_command(label=t("brute"), command=self.brute_force)
         cipher_m.add_command(label=t("known_attack"), command=self.known_attack)
-        menubar.add_cascade(label=t("cipher"), menu=cipher_m)
+        bar.add_cascade(label=t("cipher"), menu=cipher_m)
 
-        help_m = tk.Menu(menubar, tearoff=0)
+        help_m = tk.Menu(bar, tearoff=0)
         help_m.add_command(label=t("about"), command=self.show_about)
-        menubar.add_cascade(label=t("help"), menu=help_m)
-        self.config(menu=menubar)
+        bar.add_cascade(label=t("help"), menu=help_m)
+        self.config(menu=bar)
 
-    def _build_toolbar(self):
-        bar = tk.Frame(self, bd=1, relief=tk.RAISED)
-        bar.pack(side=tk.TOP, fill=tk.X)
+    def _toolbar(self):
+        frame = tk.Frame(self, bd=1, relief=tk.RAISED)
+        frame.pack(side=tk.TOP, fill=tk.X)
         for text, cmd in (
             (t("open"), self.open_file),
             (t("save"), self.save_file),
             (t("toolbar_encrypt"), self.encrypt),
             (t("toolbar_decrypt"), self.decrypt),
         ):
-            tk.Button(bar, text=text, command=cmd).pack(side=tk.LEFT, padx=2, pady=2)
+            tk.Button(frame, text=text, command=cmd).pack(side=tk.LEFT, padx=2, pady=2)
 
-    def _build_body(self):
+    def _body(self):
         top = tk.Frame(self)
         top.pack(fill=tk.X, padx=8, pady=6)
 
         tk.Label(top, text=t("mode")).grid(row=0, column=0, sticky="w")
         self.mode = ttk.Combobox(
             top,
-            values=[
-                t("mode_caesar"),
-                t("mode_linear"),
-                t("mode_nonlinear"),
-                t("mode_motto"),
-            ],
+            values=[t("mode_linear"), t("mode_nonlinear"), t("mode_motto")],
             state="readonly",
-            width=28,
+            width=24,
         )
         self.mode.current(0)
         self.mode.grid(row=0, column=1, sticky="w", padx=4)
@@ -91,15 +77,13 @@ class App(tk.Tk):
         self.lang.grid(row=0, column=3, sticky="w", padx=4)
 
         tk.Label(top, text=t("key")).grid(row=1, column=0, sticky="w", pady=6)
-        self.key_var = tk.StringVar(value="13")
+        self.key_var = tk.StringVar(value="2,5")
         tk.Entry(top, textvariable=self.key_var, width=40).grid(
             row=1, column=1, columnspan=3, sticky="we", padx=4, pady=6
         )
-        tk.Label(
-            top,
-            text="Цезар: число | лінійний: A,B | нелінійний: A,B,C | гасло: текст",
-            fg="#555",
-        ).grid(row=2, column=1, columnspan=3, sticky="w")
+        tk.Label(top, text=t("key_hint"), fg="#555").grid(
+            row=2, column=1, columnspan=3, sticky="w"
+        )
 
         tk.Label(self, text=t("text")).pack(anchor="w", padx=8)
         self.input = tk.Text(self, height=12)
@@ -113,7 +97,7 @@ class App(tk.Tk):
         return UA_ALPHABET if self.lang.current() == 0 else EN_ALPHABET
 
     def _mode_id(self) -> str:
-        return ["caesar", "linear", "nonlinear", "motto"][self.mode.current()]
+        return ["linear", "nonlinear", "motto"][self.mode.current()]
 
     def new_file(self):
         self.path = None
@@ -136,7 +120,9 @@ class App(tk.Tk):
             except UnicodeDecodeError:
                 self.binary = raw
                 self.input.delete("1.0", tk.END)
-                self.input.insert("1.0", t("binary_hint") + f"\n[{len(raw)} bytes] {path}")
+                self.input.insert(
+                    "1.0", t("binary_hint") + f"\n[{len(raw)} bytes] {path}"
+                )
             self.path = path
         except OSError:
             messagebox.showerror(t("app_title"), t("err_open"))
@@ -194,54 +180,27 @@ class App(tk.Tk):
         ab = self._alphabet()
         try:
             if self.binary is not None:
-                if mode == "caesar":
-                    out = (
-                        self.caesar.encrypt_bytes(self.binary, key)
-                        if enc
-                        else self.caesar.decrypt_bytes(self.binary, key)
-                    )
-                else:
-                    out = (
-                        self.trit.encrypt_bytes(self.binary, mode, key)
-                        if enc
-                        else self.trit.decrypt_bytes(self.binary, mode, key)
-                    )
+                out = (
+                    self.cipher.encrypt_bytes(self.binary, mode, key)
+                    if enc
+                    else self.cipher.decrypt_bytes(self.binary, mode, key)
+                )
                 self.binary = out
                 self.output.delete("1.0", tk.END)
                 self.output.insert("1.0", f"OK, {len(out)} bytes")
                 return
             text = self.input.get("1.0", tk.END).rstrip("\n")
-            if mode == "caesar":
-                result = (
-                    self.caesar.encrypt(text, key, ab)
-                    if enc
-                    else self.caesar.decrypt(text, key, ab)
-                )
-            else:
-                result = (
-                    self.trit.encrypt(text, mode, key, ab)
-                    if enc
-                    else self.trit.decrypt(text, mode, key, ab)
-                )
+            result = (
+                self.cipher.encrypt(text, mode, key, ab)
+                if enc
+                else self.cipher.decrypt(text, mode, key, ab)
+            )
             self.output.delete("1.0", tk.END)
             self.output.insert("1.0", result)
         except ValueError:
             messagebox.showerror(
-                t("app_title"), t("err_key") if key.strip() == "" else t("err_data")
+                t("app_title"), t("err_key") if not key.strip() else t("err_data")
             )
-
-    def brute_force(self):
-        text = self.input.get("1.0", tk.END).rstrip("\n")
-        if not text:
-            messagebox.showerror(t("app_title"), t("err_data"))
-            return
-        rows = BruteForceAttack().run(text, self._alphabet())
-        win = tk.Toplevel(self)
-        win.title(t("brute_title"))
-        box = tk.Text(win, width=80, height=24)
-        box.pack(fill=tk.BOTH, expand=True)
-        for k, val in rows:
-            box.insert(tk.END, f"k={k}: {val}\n")
 
     def known_attack(self):
         win = tk.Toplevel(self)
