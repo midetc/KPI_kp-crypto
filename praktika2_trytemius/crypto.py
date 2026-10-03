@@ -1,15 +1,16 @@
 UA = "абвгґдеєжзиіїйклмнопрстуфхцчшщьюя"
 EN = "abcdefghijklmnopqrstuvwxyz"
-BYTE_N = 256
 
 
 class Alphabet:
-    def __init__(self, letters: str):
+    def __init__(self, letters):
         self.letters = letters
         self.n = len(letters)
-        self.index = {ch: i for i, ch in enumerate(letters)}
+        self.index = {}
+        for i in range(len(letters)):
+            self.index[letters[i]] = i
 
-    def has(self, ch: str) -> bool:
+    def has(self, ch):
         return ch.lower() in self.index
 
 
@@ -17,7 +18,7 @@ UA_ALPHABET = Alphabet(UA)
 EN_ALPHABET = Alphabet(EN)
 
 
-def pick_alphabet(text: str) -> Alphabet:
+def pick_alphabet(text):
     for ch in text:
         if ch.lower() in UA_ALPHABET.index:
             return UA_ALPHABET
@@ -27,136 +28,204 @@ def pick_alphabet(text: str) -> Alphabet:
 
 
 class TrithemiusCipher:
-    def validate_key(self, mode: str, key):
+    def validate_key(self, mode, key):
         if mode == "motto":
-            motto = str(key).strip()
-            if not motto:
+            s = str(key).strip()
+            if s == "":
                 raise ValueError("key")
-            return motto
-        parts = [p.strip() for p in str(key).replace(";", ",").split(",")]
+            return s
+        parts = str(key).replace(";", ",").split(",")
+        parts = [p.strip() for p in parts]
         need = 2 if mode == "linear" else 3
         if len(parts) != need:
             raise ValueError("key")
-        try:
-            return [int(p) for p in parts]
-        except ValueError as exc:
-            raise ValueError("key") from exc
+        nums = []
+        for p in parts:
+            nums.append(int(p))
+        return nums
 
-    def validate_data(self, data) -> str:
+    def validate_data(self, data):
         if data is None:
             raise ValueError("data")
-        text = data if isinstance(data, str) else data.decode("utf-8", errors="replace")
+        if isinstance(data, bytes):
+            text = data.decode("utf-8", errors="replace")
+        else:
+            text = data
         if text == "":
             raise ValueError("data")
         return text
 
-    def _shifts(self, mode: str, key, length: int, alphabet: Alphabet):
+    def make_shifts(self, mode, key, length, alphabet):
+        shifts = []
         if mode == "linear":
-            a, b = key
-            return [(a * p + b) % alphabet.n for p in range(length)]
-        if mode == "nonlinear":
-            a, b, c = key
-            return [(a * p * p + b * p + c) % alphabet.n for p in range(length)]
-        motto = key
-        stream = []
-        i = 0
-        while len(stream) < length:
-            ch = motto[i % len(motto)].lower()
-            if ch in alphabet.index:
-                stream.append(alphabet.index[ch])
-            i += 1
-            if i > length * max(len(motto), 1) + 50:
-                raise ValueError("key")
-        return stream
+            a = key[0]
+            b = key[1]
+            p = 0
+            while p < length:
+                shifts.append((a * p + b) % alphabet.n)
+                p += 1
+        elif mode == "nonlinear":
+            a = key[0]
+            b = key[1]
+            c = key[2]
+            p = 0
+            while p < length:
+                shifts.append((a * p * p + b * p + c) % alphabet.n)
+                p += 1
+        else:
+            i = 0
+            while len(shifts) < length:
+                ch = key[i % len(key)].lower()
+                if ch in alphabet.index:
+                    shifts.append(alphabet.index[ch])
+                i += 1
+                if i > 5000:
+                    raise ValueError("key")
+        return shifts
 
-    def _shift_char(self, ch: str, shift: int, alphabet: Alphabet) -> str:
-        lower = ch.lower()
-        if lower not in alphabet.index:
+    def shift_char(self, ch, shift, alphabet):
+        low = ch.lower()
+        if low not in alphabet.index:
             return ch
-        pos = (alphabet.index[lower] + shift) % alphabet.n
+        pos = (alphabet.index[low] + shift) % alphabet.n
         out = alphabet.letters[pos]
-        return out.upper() if ch.isupper() else out
+        if ch.isupper():
+            return out.upper()
+        return out
 
-    def encrypt(self, data, mode: str, key, alphabet: Alphabet | None = None) -> str:
+    def encrypt(self, data, mode, key, alphabet=None):
         text = self.validate_data(data)
         parsed = self.validate_key(mode, key)
-        ab = alphabet or pick_alphabet(text)
-        letter_pos = [i for i, ch in enumerate(text) if ab.has(ch)]
-        shifts = self._shifts(mode, parsed, len(letter_pos), ab)
-        shift_at = {pos: shifts[i] for i, pos in enumerate(letter_pos)}
-        return "".join(
-            self._shift_char(ch, shift_at[i], ab) if i in shift_at else ch
-            for i, ch in enumerate(text)
-        )
+        if alphabet is None:
+            alphabet = pick_alphabet(text)
+        letter_pos = []
+        i = 0
+        while i < len(text):
+            if alphabet.has(text[i]):
+                letter_pos.append(i)
+            i += 1
+        shifts = self.make_shifts(mode, parsed, len(letter_pos), alphabet)
+        result = ""
+        si = 0
+        i = 0
+        while i < len(text):
+            if alphabet.has(text[i]):
+                result += self.shift_char(text[i], shifts[si], alphabet)
+                si += 1
+            else:
+                result += text[i]
+            i += 1
+        return result
 
-    def decrypt(self, data, mode: str, key, alphabet: Alphabet | None = None) -> str:
+    def decrypt(self, data, mode, key, alphabet=None):
         text = self.validate_data(data)
         parsed = self.validate_key(mode, key)
-        ab = alphabet or pick_alphabet(text)
-        letter_pos = [i for i, ch in enumerate(text) if ab.has(ch)]
-        shifts = self._shifts(mode, parsed, len(letter_pos), ab)
-        shift_at = {pos: -shifts[i] for i, pos in enumerate(letter_pos)}
-        return "".join(
-            self._shift_char(ch, shift_at[i], ab) if i in shift_at else ch
-            for i, ch in enumerate(text)
-        )
+        if alphabet is None:
+            alphabet = pick_alphabet(text)
+        letter_pos = []
+        i = 0
+        while i < len(text):
+            if alphabet.has(text[i]):
+                letter_pos.append(i)
+            i += 1
+        shifts = self.make_shifts(mode, parsed, len(letter_pos), alphabet)
+        result = ""
+        si = 0
+        i = 0
+        while i < len(text):
+            if alphabet.has(text[i]):
+                result += self.shift_char(text[i], -shifts[si], alphabet)
+                si += 1
+            else:
+                result += text[i]
+            i += 1
+        return result
 
-    def encrypt_bytes(self, data: bytes, mode: str, key) -> bytes:
+    def encrypt_bytes(self, data, mode, key):
         parsed = self.validate_key(mode, key)
-        if mode == "motto":
-            shifts = [(ord(parsed[i % len(parsed)]) % BYTE_N) for i in range(len(data))]
-        elif mode == "linear":
-            a, b = parsed
-            shifts = [(a * p + b) % BYTE_N for p in range(len(data))]
-        else:
-            a, b, c = parsed
-            shifts = [(a * p * p + b * p + c) % BYTE_N for p in range(len(data))]
-        return bytes((data[i] + shifts[i]) % BYTE_N for i in range(len(data)))
+        out = bytearray()
+        i = 0
+        while i < len(data):
+            if mode == "motto":
+                sh = ord(parsed[i % len(parsed)]) % 256
+            elif mode == "linear":
+                sh = (parsed[0] * i + parsed[1]) % 256
+            else:
+                sh = (parsed[0] * i * i + parsed[1] * i + parsed[2]) % 256
+            out.append((data[i] + sh) % 256)
+            i += 1
+        return bytes(out)
 
-    def decrypt_bytes(self, data: bytes, mode: str, key) -> bytes:
+    def decrypt_bytes(self, data, mode, key):
         parsed = self.validate_key(mode, key)
-        if mode == "motto":
-            shifts = [(ord(parsed[i % len(parsed)]) % BYTE_N) for i in range(len(data))]
-        elif mode == "linear":
-            a, b = parsed
-            shifts = [(a * p + b) % BYTE_N for p in range(len(data))]
-        else:
-            a, b, c = parsed
-            shifts = [(a * p * p + b * p + c) % BYTE_N for p in range(len(data))]
-        return bytes((data[i] - shifts[i]) % BYTE_N for i in range(len(data)))
+        out = bytearray()
+        i = 0
+        while i < len(data):
+            if mode == "motto":
+                sh = ord(parsed[i % len(parsed)]) % 256
+            elif mode == "linear":
+                sh = (parsed[0] * i + parsed[1]) % 256
+            else:
+                sh = (parsed[0] * i * i + parsed[1] * i + parsed[2]) % 256
+            out.append((data[i] - sh) % 256)
+            i += 1
+        return bytes(out)
 
 
 class KnownPlaintextAttack:
-    def recover(self, plain: str, cipher: str, mode: str, alphabet: Alphabet | None = None):
+    def recover(self, plain, cipher, mode, alphabet=None):
         if len(plain) != len(cipher):
             raise ValueError("data")
-        ab = alphabet or pick_alphabet(plain + cipher)
+        if alphabet is None:
+            alphabet = pick_alphabet(plain + cipher)
         deltas = []
-        for p_ch, c_ch in zip(plain, cipher):
-            if not (ab.has(p_ch) and ab.has(c_ch)):
-                continue
-            px = ab.index[p_ch.lower()]
-            cx = ab.index[c_ch.lower()]
-            deltas.append((cx - px) % ab.n)
+        i = 0
+        while i < len(plain):
+            if alphabet.has(plain[i]) and alphabet.has(cipher[i]):
+                px = alphabet.index[plain[i].lower()]
+                cx = alphabet.index[cipher[i].lower()]
+                deltas.append((cx - px) % alphabet.n)
+            i += 1
         if mode == "motto":
-            if not deltas:
+            if len(deltas) == 0:
                 raise ValueError("data")
-            return "".join(ab.letters[d] for d in deltas)
+            s = ""
+            for d in deltas:
+                s += alphabet.letters[d]
+            return s
         if mode == "linear":
             if len(deltas) < 2:
                 raise ValueError("data")
-            for a in range(ab.n):
-                b = deltas[0] % ab.n
-                if all(deltas[p] == (a * p + b) % ab.n for p in range(len(deltas))):
+            a = 0
+            while a < alphabet.n:
+                b = deltas[0]
+                ok = True
+                p = 0
+                while p < len(deltas):
+                    if deltas[p] != (a * p + b) % alphabet.n:
+                        ok = False
+                        break
+                    p += 1
+                if ok:
                     return [a, b]
+                a += 1
             raise ValueError("key")
         if len(deltas) < 3:
             raise ValueError("data")
-        for a in range(ab.n):
-            for b in range(ab.n):
-                c = deltas[0] % ab.n
-                if all(
-                    d == (a * p * p + b * p + c) % ab.n for p, d in enumerate(deltas)
-                ):
+        a = 0
+        while a < alphabet.n:
+            b = 0
+            while b < alphabet.n:
+                c = deltas[0]
+                ok = True
+                p = 0
+                while p < len(deltas):
+                    if deltas[p] != (a * p * p + b * p + c) % alphabet.n:
+                        ok = False
+                        break
+                    p += 1
+                if ok:
                     return [a, b, c]
+                b += 1
+            a += 1
         raise ValueError("key")

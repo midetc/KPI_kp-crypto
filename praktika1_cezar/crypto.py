@@ -1,80 +1,106 @@
 UA = "абвгґдеєжзиіїйклмнопрстуфхцчшщьюя"
 EN = "abcdefghijklmnopqrstuvwxyz"
-BYTE_N = 256
 
 
 class Alphabet:
-    def __init__(self, letters: str):
+    def __init__(self, letters):
         self.letters = letters
         self.n = len(letters)
-        self.index = {ch: i for i, ch in enumerate(letters)}
-
-    def has(self, ch: str) -> bool:
-        return ch.lower() in self.index
+        self.index = {}
+        i = 0
+        while i < len(letters):
+            self.index[letters[i]] = i
+            i += 1
 
 
 UA_ALPHABET = Alphabet(UA)
 EN_ALPHABET = Alphabet(EN)
 
 
-def pick_alphabet(text: str) -> Alphabet:
+def pick_alphabet(text):
     for ch in text:
-        if ch.lower() in UA_ALPHABET.index:
+        low = ch.lower()
+        if low in UA_ALPHABET.index:
             return UA_ALPHABET
-        if ch.lower() in EN_ALPHABET.index:
+        if low in EN_ALPHABET.index:
             return EN_ALPHABET
     return UA_ALPHABET
 
 
 class CaesarCipher:
-    def validate_key(self, key) -> int:
+    def validate_key(self, key):
         try:
             return int(key)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("key") from exc
+        except Exception:
+            raise ValueError("key")
 
-    def validate_data(self, data) -> str:
+    def validate_data(self, data):
         if data is None:
             raise ValueError("data")
-        text = data if isinstance(data, str) else data.decode("utf-8", errors="replace")
+        if isinstance(data, bytes):
+            text = data.decode("utf-8", errors="replace")
+        else:
+            text = data
         if text == "":
             raise ValueError("data")
         return text
 
-    def _shift_char(self, ch: str, shift: int, alphabet: Alphabet) -> str:
-        lower = ch.lower()
-        if lower not in alphabet.index:
+    def shift_char(self, ch, shift, alphabet):
+        low = ch.lower()
+        if low not in alphabet.index:
             return ch
-        pos = (alphabet.index[lower] + shift) % alphabet.n
+        pos = (alphabet.index[low] + shift) % alphabet.n
         out = alphabet.letters[pos]
-        return out.upper() if ch.isupper() else out
+        if ch.isupper():
+            return out.upper()
+        return out
 
-    def encrypt(self, data, key, alphabet: Alphabet | None = None) -> str:
+    def encrypt(self, data, key, alphabet=None):
         text = self.validate_data(data)
         k = self.validate_key(key)
-        ab = alphabet or pick_alphabet(text)
-        return "".join(self._shift_char(ch, k, ab) for ch in text)
+        if alphabet is None:
+            alphabet = pick_alphabet(text)
+        result = ""
+        for ch in text:
+            result += self.shift_char(ch, k, alphabet)
+        return result
 
-    def decrypt(self, data, key, alphabet: Alphabet | None = None) -> str:
+    def decrypt(self, data, key, alphabet=None):
         text = self.validate_data(data)
         k = self.validate_key(key)
-        ab = alphabet or pick_alphabet(text)
-        return "".join(self._shift_char(ch, -k, ab) for ch in text)
+        if alphabet is None:
+            alphabet = pick_alphabet(text)
+        result = ""
+        for ch in text:
+            result += self.shift_char(ch, -k, alphabet)
+        return result
 
-    def encrypt_bytes(self, data: bytes, key) -> bytes:
-        k = self.validate_key(key) % BYTE_N
-        return bytes((b + k) % BYTE_N for b in data)
+    def encrypt_bytes(self, data, key):
+        k = self.validate_key(key) % 256
+        out = bytearray()
+        for b in data:
+            out.append((b + k) % 256)
+        return bytes(out)
 
-    def decrypt_bytes(self, data: bytes, key) -> bytes:
-        k = self.validate_key(key) % BYTE_N
-        return bytes((b - k) % BYTE_N for b in data)
+    def decrypt_bytes(self, data, key):
+        k = self.validate_key(key) % 256
+        out = bytearray()
+        for b in data:
+            out.append((b - k) % 256)
+        return bytes(out)
 
 
 class BruteForceAttack:
     def __init__(self):
         self.caesar = CaesarCipher()
 
-    def run(self, cipher_text: str, alphabet: Alphabet | None = None):
+    def run(self, cipher_text, alphabet=None):
         text = self.caesar.validate_data(cipher_text)
-        ab = alphabet or pick_alphabet(text)
-        return [(k, self.caesar.decrypt(text, k, ab)) for k in range(ab.n)]
+        if alphabet is None:
+            alphabet = pick_alphabet(text)
+        rows = []
+        k = 0
+        while k < alphabet.n:
+            rows.append((k, self.caesar.decrypt(text, k, alphabet)))
+            k += 1
+        return rows

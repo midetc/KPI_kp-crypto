@@ -1,12 +1,6 @@
 import random
 import re
 
-SUBSTITUTES = {
-    "щ": "ш",
-    "ё": "е",
-    "ъ": "ь",
-}
-
 DEFAULT_POEM = (
     "Садок вишневий коло хати Хрущі над вишнями гудуть "
     "Плугатарі з плугами йдуть Дівчата пісню співають "
@@ -17,130 +11,141 @@ DEFAULT_POEM = (
 
 
 class PoemKey:
-    def __init__(self, poem: str, width: int):
-        if width < 2 or width > 20:
+    def __init__(self, poem, width):
+        width = int(width)
+        if width < 2:
             raise ValueError("key")
-        letters = [ch for ch in poem if ch.isalpha()]
+        letters = []
+        for ch in poem:
+            if ch.isalpha():
+                letters.append(ch)
         if len(letters) < width:
             raise ValueError("key")
         self.width = width
         self.rows = []
-        for i in range(0, len(letters), width):
-            chunk = letters[i : i + width]
-            if len(chunk) < width:
-                chunk += [" "] * (width - len(chunk))
-            self.rows.append(chunk)
+        i = 0
+        while i < len(letters):
+            row = letters[i : i + width]
+            while len(row) < width:
+                row.append(" ")
+            self.rows.append(row)
+            i += width
         self.height = len(self.rows)
 
-    def positions(self, ch: str) -> list[tuple[int, int]]:
-        target = SUBSTITUTES.get(ch.lower(), ch.lower())
+    def positions(self, ch):
+        target = ch.lower()
+        if target == "щ":
+            target = "ш"
         found = []
-        for r, row in enumerate(self.rows):
-            for c, cell in enumerate(row):
+        r = 0
+        while r < len(self.rows):
+            c = 0
+            while c < len(self.rows[r]):
+                cell = self.rows[r][c]
                 if cell.isalpha() and cell.lower() == target:
                     found.append((r + 1, c + 1))
+                c += 1
+            r += 1
         return found
 
-    def at(self, row: int, col: int) -> str:
-        if row < 1 or col < 1 or row > self.height or col > self.width:
-            raise ValueError("data")
+    def at(self, row, col):
         ch = self.rows[row - 1][col - 1]
         if not ch.isalpha():
             raise ValueError("data")
         return ch
 
-    def as_text(self) -> str:
-        lines = ["   " + " ".join(f"{c:02d}" for c in range(1, self.width + 1))]
-        for i, row in enumerate(self.rows, start=1):
-            cells = "  ".join(ch if ch != " " else "·" for ch in row)
-            lines.append(f"{i:02d} {cells}")
+    def as_text(self):
+        lines = []
+        head = "   "
+        c = 1
+        while c <= self.width:
+            head += "%02d " % c
+            c += 1
+        lines.append(head)
+        r = 0
+        while r < len(self.rows):
+            line = "%02d " % (r + 1)
+            for ch in self.rows[r]:
+                if ch == " ":
+                    line += ". "
+                else:
+                    line += ch + " "
+            lines.append(line)
+            r += 1
         return "\n".join(lines)
 
 
 class VerseCipher:
-    def validate_key(self, poem: str, width) -> PoemKey:
-        try:
-            w = int(width)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("key") from exc
-        return PoemKey(poem, w)
+    def validate_key(self, poem, width):
+        return PoemKey(poem, width)
 
-    def validate_data(self, data) -> str:
-        if data is None:
+    def validate_data(self, data):
+        if data is None or str(data).strip() == "":
             raise ValueError("data")
-        text = data if isinstance(data, str) else data.decode("utf-8", errors="replace")
-        if text.strip() == "":
-            raise ValueError("data")
-        return text
+        return str(data)
 
-    def encrypt(self, data, poem: str, width, rng: random.Random | None = None) -> str:
+    def encrypt(self, data, poem, width):
         text = self.validate_data(data)
         key = self.validate_key(poem, width)
-        rnd = rng or random.Random()
         codes = []
         for ch in text:
             if not ch.isalpha():
                 continue
             opts = key.positions(ch)
-            if not opts:
+            if len(opts) == 0:
                 raise ValueError("data")
-            r, c = rnd.choice(opts)
-            codes.append(f"{r}/{c}")
-        if not codes:
+            r, c = random.choice(opts)
+            codes.append(str(r) + "/" + str(c))
+        if len(codes) == 0:
             raise ValueError("data")
         return ", ".join(codes)
 
-    def decrypt(self, data, poem: str, width) -> str:
+    def decrypt(self, data, poem, width):
         text = self.validate_data(data)
         key = self.validate_key(poem, width)
         tokens = re.findall(r"(\d+)\s*/\s*(\d+)", text)
-        if not tokens:
+        if len(tokens) == 0:
             raise ValueError("data")
-        return "".join(key.at(int(r), int(c)) for r, c in tokens)
+        out = ""
+        for r, c in tokens:
+            out += key.at(int(r), int(c))
+        return out
 
 
 class WordBookCipher:
-    def validate_key(self, book: str) -> list[str]:
-        words = re.findall(r"[A-Za-zА-Яа-яЁёІіЇїЄєҐґ']+", book)
-        if not words:
+    def get_words(self, book):
+        words = re.findall(r"[A-Za-zА-Яа-яІіЇїЄєҐґ']+", book)
+        if len(words) == 0:
             raise ValueError("key")
         return words
 
-    def validate_data(self, data) -> str:
-        if data is None:
+    def encrypt(self, data, book):
+        if data is None or str(data).strip() == "":
             raise ValueError("data")
-        text = data if isinstance(data, str) else data.decode("utf-8", errors="replace")
-        if text.strip() == "":
-            raise ValueError("data")
-        return text
-
-    def encrypt(self, data, book: str, rng: random.Random | None = None) -> str:
-        text = self.validate_data(data)
-        words = self.validate_key(book)
-        rnd = rng or random.Random()
+        words = self.get_words(book)
         codes = []
-        for ch in text:
+        for ch in data:
             if not ch.isalpha():
                 continue
-            target = SUBSTITUTES.get(ch.lower(), ch.lower())
-            opts = [i + 1 for i, w in enumerate(words) if w[0].lower() == target]
-            if not opts:
+            target = ch.lower()
+            opts = []
+            i = 0
+            while i < len(words):
+                if words[i][0].lower() == target:
+                    opts.append(i + 1)
+                i += 1
+            if len(opts) == 0:
                 raise ValueError("data")
-            codes.append(str(rnd.choice(opts)))
-        if not codes:
-            raise ValueError("data")
+            codes.append(str(random.choice(opts)))
         return ", ".join(codes)
 
-    def decrypt(self, data, book: str) -> str:
-        text = self.validate_data(data)
-        words = self.validate_key(book)
-        nums = re.findall(r"\d+", text)
-        if not nums:
+    def decrypt(self, data, book):
+        words = self.get_words(book)
+        nums = re.findall(r"\d+", data)
+        if len(nums) == 0:
             raise ValueError("data")
-        out = []
+        out = ""
         for n in nums:
             idx = int(n) - 1
-            if idx < 0 or idx >= len(words):
-                raise ValueError("data")
-            out.append(words[idx][0])
-        return "".join(out)
+            out += words[idx][0]
+        return out
